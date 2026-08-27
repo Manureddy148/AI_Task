@@ -31,7 +31,7 @@ Every stage is **stateless against its queue** and **idempotent** (writes keyed 
 
 **Discovery is decoupled from extraction.** Sitemap/index/API-pagination crawlers only *emit* URLs into the frontier; detail workers only *consume*. Neither knows the other's speed — backpressure comes from bounded queues, keeping memory flat at any frontier size.
 
-**Prefer paginated APIs, fall back to sitemaps, HTML last.** arXiv API (~50k records/vertical/day within politeness limits), Hugging Face Papers API, the YC company dataset, Greenhouse/Lever boards — all cursor-resumable, so a crashed worker restarts from its checkpoint, not from zero.
+**Prefer paginated APIs, fall back to sitemaps, HTML last.** arXiv API (~50k records/vertical/day within politeness limits), Hugging Face Papers API, the YC company dataset, Greenhouse/Lever/Ashby boards — all cursor-resumable, so a crashed worker restarts from its checkpoint, not from zero.
 
 **Capacity math (why 500k is an infra knob, not a rewrite).** One async worker at per-domain politeness 4 req/s sustained ≈ 14k pages/hour/domain. 500k records spread over ~40 source domains ≈ 12.5k/domain — **under one hour of crawling on a single 8-vCPU node** if sources allowed it; in practice politeness and anti-bot pacing dominate, so the planning number is 24–48h with 3 nodes. LLM side: ~2k input tokens/record → 1B tokens for 500k records; at three tiers × published TPM this is throughput-bounded, so the orchestrator treats tiers as *parallel capacity* (round-robin under load) rather than strictly serial fallback.
 

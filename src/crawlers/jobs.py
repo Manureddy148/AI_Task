@@ -211,11 +211,40 @@ async def _from_lever(session, source, throttle, settings) -> list[dict[str, Any
     return [r for r in records if r]
 
 
+async def _from_ashby(session, source, throttle, settings) -> list[dict[str, Any]]:
+    body = await fetch(session, source["url"], throttle, settings)
+    if not body:
+        return []
+    try:
+        jobs = json.loads(body).get("jobs", [])
+    except (ValueError, AttributeError):
+        return []
+    company = source["name"].replace(" Careers", "")
+    records = []
+    for job in jobs:
+        if job.get("isListed") is False:
+            continue
+        workplace = (job.get("workplaceType") or "").lower()
+        records.append(
+            _job_record(
+                source["name"],
+                job.get("jobUrl") or job.get("applyUrl") or "",
+                company,
+                job.get("title") or "",
+                parse_date(job.get("publishedAt")),
+                bool(job.get("isRemote")) or workplace == "remote",
+                job.get("location"),
+            )
+        )
+    return [r for r in records if r]
+
+
 _HANDLERS = {
     "remoteok": _from_remoteok,
     "rss": _from_rss,
     "greenhouse": _from_greenhouse,
     "lever": _from_lever,
+    "ashby": _from_ashby,
 }
 
 

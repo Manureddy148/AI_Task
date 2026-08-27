@@ -98,7 +98,8 @@ PRODUCT_SITEMAP_SOURCES = (
     {"name": "Toolify", "sitemap": "https://www.toolify.ai/sitemap.xml", "path_marker": "/tool/"},
 )
 
-# --- Phase II: fresh-signal sources (5 news + 5 job boards) ---
+# --- Phase II: fresh-signal sources (brief minimum: 5 news + 5 boards; we
+# monitor 9 + 11 — every endpoint verified live before inclusion) ---
 
 NEWS_SOURCES = (
     {"name": "TechCrunch AI", "feed": "https://techcrunch.com/category/artificial-intelligence/feed/"},
@@ -106,12 +107,22 @@ NEWS_SOURCES = (
     {"name": "The Decoder", "feed": "https://the-decoder.com/feed/"},
     {"name": "MarkTechPost", "feed": "https://www.marktechpost.com/feed/"},
     {"name": "AI News", "feed": "https://www.artificialintelligence-news.com/feed/"},
+    {"name": "The Verge AI", "feed": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"},
+    {"name": "MIT Technology Review AI", "feed": "https://www.technologyreview.com/topic/artificial-intelligence/feed"},
+    {"name": "Ars Technica AI", "feed": "https://arstechnica.com/ai/feed/"},
+    {"name": "Wired AI", "feed": "https://www.wired.com/feed/tag/ai/latest/rss"},
 )
 
 JOB_SOURCES = (
     {"name": "RemoteOK", "kind": "remoteok", "url": "https://remoteok.com/api"},
     {"name": "We Work Remotely", "kind": "rss", "url": "https://weworkremotely.com/categories/remote-programming-jobs.rss"},
+    {"name": "OpenAI Careers", "kind": "ashby", "org": "openai", "url": "https://api.ashbyhq.com/posting-api/job-board/openai"},
     {"name": "Anthropic Careers", "kind": "greenhouse", "board": "anthropic", "url": "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs"},
     {"name": "Scale AI Careers", "kind": "greenhouse", "board": "scaleai", "url": "https://boards-api.greenhouse.io/v1/boards/scaleai/jobs"},
+    {"name": "xAI Careers", "kind": "greenhouse", "board": "xai", "url": "https://boards-api.greenhouse.io/v1/boards/xai/jobs"},
+    {"name": "Databricks Careers", "kind": "greenhouse", "board": "databricks", "url": "https://boards-api.greenhouse.io/v1/boards/databricks/jobs"},
+    {"name": "Stability AI Careers", "kind": "greenhouse", "board": "stabilityai", "url": "https://boards-api.greenhouse.io/v1/boards/stabilityai/jobs"},
+    {"name": "Figure AI Careers", "kind": "greenhouse", "board": "figureai", "url": "https://boards-api.greenhouse.io/v1/boards/figureai/jobs"},
+    {"name": "Glean Careers", "kind": "greenhouse", "board": "gleanwork", "url": "https://boards-api.greenhouse.io/v1/boards/gleanwork/jobs"},
     {"name": "Mistral AI Careers", "kind": "lever", "org": "mistral", "url": "https://api.lever.co/v0/postings/mistral?mode=json"},
 )
