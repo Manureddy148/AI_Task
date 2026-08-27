@@ -6,6 +6,7 @@ Every record traces to the company's public YC profile URL.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import aiohttp
@@ -18,6 +19,11 @@ from src.utils.log import get_logger
 
 log = get_logger("crawlers.startups")
 
+# Word-boundary matching: "ai" must not match inside "aircraft" or "email".
+_AI_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(k) for k in AI_TAG_KEYWORDS) + r")\b", re.IGNORECASE
+)
+
 
 def _is_ai_company(company: dict[str, Any]) -> bool:
     haystack = " ".join(
@@ -26,8 +32,8 @@ def _is_ai_company(company: dict[str, Any]) -> bool:
             " ".join(company.get("industries") or []),
             company.get("one_liner") or "",
         ]
-    ).lower()
-    return any(keyword in haystack for keyword in AI_TAG_KEYWORDS)
+    )
+    return bool(_AI_PATTERN.search(haystack))
 
 
 def _to_record(company: dict[str, Any]) -> dict[str, Any] | None:

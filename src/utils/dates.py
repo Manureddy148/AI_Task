@@ -71,17 +71,36 @@ def parse_relative(text: str, now: datetime | None = None) -> datetime | None:
     return None
 
 
+# Fuzzy parsing is only trusted when the text visibly contains a year or a
+# month name — otherwise dateutil can hallucinate dates out of junk like
+# "Page 20 of 30", which would poison the freshness guarantee.
+_DATEISH_RE = re.compile(
+    r"\b(19|20)\d{2}\b|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec",
+    re.IGNORECASE,
+)
+
+
 def parse_date(value: str | None, now: datetime | None = None) -> datetime | None:
     """Parse an absolute or relative date string into UTC; None if unparseable."""
     if not value or not value.strip():
         return None
+    value = value.strip()
     relative = parse_relative(value, now)
     if relative is not None:
         return relative
-    try:
-        return to_utc(dateutil_parser.parse(value, fuzzy=True))
-    except (ValueError, OverflowError, TypeError):
+    # Bare short numbers ("12") would parse as day-of-current-month — reject.
+    if value.isdigit() and len(value) != 8:
         return None
+    try:
+        return to_utc(dateutil_parser.parse(value))
+    except (ValueError, OverflowError, TypeError):
+        pass
+    if _DATEISH_RE.search(value):
+        try:
+            return to_utc(dateutil_parser.parse(value, fuzzy=True))
+        except (ValueError, OverflowError, TypeError):
+            return None
+    return None
 
 
 def _dates_from_json_ld(soup: BeautifulSoup) -> datetime | None:

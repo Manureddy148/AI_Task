@@ -178,8 +178,12 @@ class LLMOrchestrator:
     @staticmethod
     async def _checked_json(resp: aiohttp.ClientResponse, provider: Provider) -> dict[str, Any]:
         if resp.status == 429:
-            retry_after = resp.headers.get("Retry-After")
-            raise RateLimited(float(retry_after) if retry_after and retry_after.isdigit() else None)
+            raw_retry_after = resp.headers.get("Retry-After")
+            try:
+                retry_after = float(raw_retry_after) if raw_retry_after else None
+            except ValueError:  # HTTP-date form of Retry-After — fall back to jitter
+                retry_after = None
+            raise RateLimited(retry_after)
         if resp.status == 413:
             raise PayloadTooLarge()
         if resp.status >= 400:

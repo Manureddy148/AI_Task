@@ -43,6 +43,8 @@ def _build_parser() -> argparse.ArgumentParser:
     export = sub.add_parser("export", help="Export the 6-tab deliverable")
     export.add_argument("--target", choices=("csv", "sheets"), default="sheets")
 
+    sub.add_parser("verify", help="Audit outputs: schema, provenance, freshness, dedup, stars")
+
     return parser
 
 
@@ -92,8 +94,24 @@ def main(argv: list[str] | None = None) -> int:
             sheets_export.run(settings)
         return 0
 
+    if args.command == "verify":
+        from src import verify
+
+        return 0 if asyncio.run(verify.run(settings)) else 1
+
     return 2
 
 
+def _run() -> int:
+    try:
+        return main()
+    except KeyboardInterrupt:
+        log.warning("interrupted — partial progress is checkpointed; re-run to resume")
+        return 130
+    except Exception:  # top-level guard: fail with a clean, logged error
+        log.exception("pipeline crashed")
+        return 1
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_run())

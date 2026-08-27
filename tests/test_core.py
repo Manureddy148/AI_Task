@@ -34,9 +34,16 @@ def test_relative_dates_normalize_to_utc():
 
 def test_parse_date_handles_absolute_and_relative():
     assert parse_date("2026-08-27T10:00:00Z").hour == 10
+    assert parse_date("Wed, 27 Aug 2026 10:00:00 GMT").hour == 10
     assert parse_date("3 days ago") is not None
     assert parse_date("not a date at all ###") is None
     assert parse_date(None) is None
+
+
+def test_parse_date_rejects_junk_that_dateutil_would_guess():
+    assert parse_date("12") is None  # bare number != day-of-current-month
+    assert parse_date("Page 20 of 30") is None  # no year/month signal -> no fuzzy
+    assert parse_date("Published Aug 20, 2026 by staff") is not None  # real fuzzy case
 
 
 def test_freshness_window():

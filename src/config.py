@@ -16,8 +16,11 @@ SCHEMA_VERSION = "1.0"
 FRESHNESS_WINDOW_HOURS = 24
 
 # --- LLM provider models (fallback chain order) ---
+# Verified live against each provider's model catalog (Aug 2026):
+# Gemini 2.0 Flash and Groq's Llama 3 family were retired upstream — the
+# task brief's examples are kept as *tiers* with their current best models.
 GEMINI_MODEL = "gemini-3.6-flash"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "openai/gpt-oss-120b"
 DEEPSEEK_MODEL = "deepseek-chat"
 
 
