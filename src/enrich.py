@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
+from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 
-from src.config import DATA_DIR, Settings
+from src.config import DATA_DIR, GITHUB_API, Settings
 from src.crawlers.news import _LLM_INSTRUCTION as NEWS_INSTRUCTION
 from src.crawlers.papers import _github_stars
 from src.llm.orchestrator import LLMOrchestrator
@@ -23,6 +26,102 @@ from src.storage.jsonl_sink import read_jsonl
 from src.utils.log import get_logger
 
 log = get_logger("enrich")
+
+# GitHub search API: 30 requests/min authenticated -> pace just above 2s.
+_SEARCH_PACING_SECONDS = 2.2
+# Repos whose *name* marks them as paper collections, not implementations.
+_LIST_NAME_RE = re.compile(
+    r"awesome|survey|papers|paper-?list|reading-?list|curated|collection|daily|weekly",
+    re.IGNORECASE,
+)
+# Descriptions that mark link aggregators (kept narrow: legit code repos
+# often *mention* arXiv in their description).
+_LIST_DESC_RE = re.compile(
+    r"awesome list|curated list|collection of papers|list of papers|paper reading",
+    re.IGNORECASE,
+)
+# A repo this popular that merely *cites* the ID is a framework, not the
+# paper's implementation (e.g. transformers' README cites hundreds of IDs).
+_FRAMEWORK_STARS_CEILING = 50_000
+
+
+def pick_search_repo(items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Choose the most plausible implementation repo from GitHub search results.
+
+    Search is best-match-ordered; we take the first result that is neither a
+    paper-collection repo nor a mega-framework that happens to cite the ID.
+    """
+    for item in items:
+        name = item.get("full_name") or ""
+        description = item.get("description") or ""
+        stars = item.get("stargazers_count") or 0
+        if _LIST_NAME_RE.search(name) or _LIST_DESC_RE.search(description):
+            continue
+        if stars > _FRAMEWORK_STARS_CEILING:
+            continue
+        return item
+    return None
+
+
+async def enrich_paper_repos(settings: Settings) -> tuple[int, int]:
+    """Link unlinked papers to GitHub repos that cite their arXiv ID.
+
+    This is how Papers with Code bootstrapped paper→code links; results are
+    labeled ``github_source: "github_search"`` so their provenance (citation
+    match, not author-declared) stays auditable. Returns (linked, remaining).
+    """
+    if not settings.github_token:
+        log.warning("papers: GITHUB_TOKEN required for the repo search linker")
+        return 0, 0
+    path = DATA_DIR / "papers.jsonl"
+    records = list(read_jsonl(path))
+    targets = [
+        r for r in records
+        if not r["content"].get("github_url") and r["content"].get("paper_url")
+    ]
+    if not targets:
+        log.info("papers: every record already has a repo link")
+        return 0, 0
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {settings.github_token}",
+    }
+    timeout = aiohttp.ClientTimeout(total=30)
+    linked = 0
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        for index, record in enumerate(targets):
+            arxiv_id = record["source"]["url"].rsplit("/", 1)[-1].split("v")[0]
+            query = quote(f'"{arxiv_id}" in:name,description,readme')
+            url = f"{GITHUB_API}/search/repositories?q={query}&per_page=5"
+            try:
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status in (403, 429):  # secondary rate limit
+                        wait = float(resp.headers.get("Retry-After") or 60)
+                        log.info("github search rate limit — waiting %.0fs", wait)
+                        await asyncio.sleep(min(wait, 120))
+                        continue
+                    if resp.status != 200:
+                        continue
+                    payload = await resp.json()
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                continue
+            chosen = pick_search_repo(payload.get("items") or [])
+            if chosen:
+                record["content"]["github_url"] = chosen["html_url"]
+                record["content"]["github_stars"] = chosen.get("stargazers_count")
+                record["content"]["github_source"] = "github_search"
+                linked += 1
+            if (index + 1) % 50 == 0:
+                _rewrite(path, records)  # checkpoint long runs
+                log.info("papers: %d/%d searched, %d newly linked", index + 1, len(targets), linked)
+            await asyncio.sleep(_SEARCH_PACING_SECONDS)
+
+    if linked:
+        _rewrite(path, records)
+    log.info("papers: repo linker done — %d newly linked, %d without a citing repo",
+             linked, len(targets) - linked)
+    return linked, len(targets) - linked
 
 
 def _rewrite(path: Path, records: list[dict]) -> None:
@@ -103,6 +202,7 @@ async def enrich_news_summaries(settings: Settings) -> tuple[int, int]:
 
 async def run(settings: Settings, vertical: str = "all") -> None:
     if vertical in ("papers", "all"):
-        await enrich_paper_stars(settings)
+        await enrich_paper_repos(settings)   # link repos first ...
+        await enrich_paper_stars(settings)   # ... then fill any star gaps
     if vertical in ("news", "all"):
         await enrich_news_summaries(settings)

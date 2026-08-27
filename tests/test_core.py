@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.crawlers.jobs import classify_role_family
+from src.enrich import pick_search_repo
 from src.llm.chunking import estimate_tokens, fit_to_budget, html_to_text
 from src.llm.orchestrator import _parse_json_output
 from src.llm.ratelimit import backoff_delay
@@ -174,6 +175,34 @@ def test_role_families():
     assert classify_role_family("Research Scientist, LLMs") == "Research"
     assert classify_role_family("Enterprise Account Executive") == "Sales"
     assert classify_role_family("Chief Vibes Officer") == "Other"
+
+
+# --- paper->repo search linker ----------------------------------------------
+
+def _repo(full_name, description="", stars=10):
+    return {"full_name": full_name, "description": description,
+            "stargazers_count": stars, "html_url": f"https://github.com/{full_name}"}
+
+
+def test_pick_search_repo_skips_paper_collections():
+    items = [
+        _repo("someone/awesome-diffusion", "Awesome list of papers", 9000),
+        _repo("lab/model-code", "Official implementation of arXiv:2408.1", 42),
+    ]
+    assert pick_search_repo(items)["full_name"] == "lab/model-code"
+
+
+def test_pick_search_repo_skips_citing_mega_frameworks():
+    items = [
+        _repo("huggingface/transformers", "State-of-the-art ML", 140_000),
+        _repo("author/paper-impl", "Code for our paper", 3),
+    ]
+    assert pick_search_repo(items)["full_name"] == "author/paper-impl"
+
+
+def test_pick_search_repo_returns_none_when_only_collections():
+    items = [_repo("x/awesome-llm-papers", "curated list", 500)]
+    assert pick_search_repo(items) is None
 
 
 # --- LLM output parsing -----------------------------------------------------

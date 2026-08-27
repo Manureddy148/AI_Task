@@ -103,59 +103,55 @@ async def _github_stars(
     return None
 
 
-async def _arxiv_sweep(
-    session: aiohttp.ClientSession, target: int
+async def _arxiv_page(
+    session: aiohttp.ClientSession, query: str, start: int
 ) -> list[dict[str, Any]]:
-    """Paginate the arXiv API newest-first until ``target`` papers collected."""
-    query = "+OR+".join(f"cat:{c}" for c in ARXIV_CATEGORIES)
-    papers: list[dict[str, Any]] = []
-    start = 0
-    while len(papers) < target:
-        url = (
-            f"{ARXIV_API}?search_query={query}&start={start}"
-            f"&max_results={_ARXIV_PAGE_SIZE}&sortBy=submittedDate&sortOrder=descending"
-        )
-        feed = None
-        for attempt in range(4):
-            try:
-                async with session.get(url) as resp:
-                    if resp.status != 200:
-                        await sleep_backoff(attempt)
-                        continue
-                    feed = feedparser.parse(await resp.text())
-                    break
-            except (aiohttp.ClientError, asyncio.TimeoutError):
-                await sleep_backoff(attempt)
-        if not feed or not feed.entries:
-            break
-        for entry in feed.entries:
-            papers.append(
-                {
-                    "arxiv_id": _arxiv_id_of(entry),
-                    "paper_url": entry.get("link") or entry.id,
-                    "title": " ".join((entry.get("title") or "").split()),
-                    "authors": [a.name for a in entry.get("authors", [])],
-                    "published": entry.get("published"),
-                    "abstract": entry.get("summary") or "",
-                    "comment": entry.get("arxiv_comment") or "",
-                }
-            )
-        log.info("arxiv sweep: %d papers collected", len(papers))
-        start += _ARXIV_PAGE_SIZE
-        await asyncio.sleep(_ARXIV_POLITENESS_SECONDS)
-    return papers
+    """Fetch one page of the newest-first arXiv sweep."""
+    url = (
+        f"{ARXIV_API}?search_query={query}&start={start}"
+        f"&max_results={_ARXIV_PAGE_SIZE}&sortBy=submittedDate&sortOrder=descending"
+    )
+    for attempt in range(4):
+        try:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    await sleep_backoff(attempt)
+                    continue
+                feed = feedparser.parse(await resp.text())
+                break
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            await sleep_backoff(attempt)
+    else:
+        return []
+    return [
+        {
+            "arxiv_id": _arxiv_id_of(entry),
+            "paper_url": entry.get("link") or entry.id,
+            "title": " ".join((entry.get("title") or "").split()),
+            "authors": [a.name for a in entry.get("authors", [])],
+            "published": entry.get("published"),
+            "abstract": entry.get("summary") or "",
+            "comment": entry.get("arxiv_comment") or "",
+        }
+        for entry in feed.entries
+    ]
 
 
 async def run(settings: Settings, min_records: int = 1000) -> int:
-    """Crawl research papers until ``min_records`` unique records are stored."""
+    """Crawl research papers until ``min_records`` *new* records are stored.
+
+    Page-driven: already-seen papers are skipped and pagination continues,
+    so a resumed or repeated run keeps deepening the sweep instead of
+    re-reading its own history.
+    """
     sink = JsonlSink(DATA_DIR / "papers.jsonl")
     seen = SeenStore(DATA_DIR / "state" / "papers.seen")
     timeout = aiohttp.ClientTimeout(total=settings.request_timeout)
     semaphore = asyncio.Semaphore(min(16, settings.max_concurrency))
+    query = "+OR+".join(f"cat:{c}" for c in ARXIV_CATEGORIES)
     written = 0
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        papers = await _arxiv_sweep(session, target=int(min_records * 1.2))
 
         async def build(paper: dict[str, Any]) -> dict[str, Any] | None:
             if not paper["title"] or not paper["authors"]:
@@ -185,14 +181,17 @@ async def run(settings: Settings, min_records: int = 1000) -> int:
                 },
             )
 
-        for batch_start in range(0, len(papers), 200):
-            batch = papers[batch_start : batch_start + 200]
-            for record in await asyncio.gather(*(build(p) for p in batch)):
+        start = 0
+        while written < min_records:
+            papers = await _arxiv_page(session, query, start)
+            if not papers:
+                break
+            for record in await asyncio.gather(*(build(p) for p in papers)):
                 if record and sink.append(record):
                     written += 1
-            log.info("papers: %d/%d records written", written, min_records)
-            if written >= min_records:
-                break
+            log.info("papers: %d/%d new records (sweep offset %d)", written, min_records, start)
+            start += _ARXIV_PAGE_SIZE
+            await asyncio.sleep(_ARXIV_POLITENESS_SECONDS)
 
     log.info("papers vertical done: %d records written (%d total unique seen)", written, len(seen))
     return written
