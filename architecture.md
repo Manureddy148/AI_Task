@@ -35,6 +35,8 @@ Every stage is **stateless against its queue** and **idempotent** (writes keyed 
 
 **Capacity math (why 500k is an infra knob, not a rewrite).** One async worker at per-domain politeness 4 req/s sustained ≈ 14k pages/hour/domain. 500k records spread over ~40 source domains ≈ 12.5k/domain — **under one hour of crawling on a single 8-vCPU node** if sources allowed it; in practice politeness and anti-bot pacing dominate, so the planning number is 24–48h with 3 nodes. LLM side: ~2k input tokens/record → 1B tokens for 500k records; at three tiers × published TPM this is throughput-bounded, so the orchestrator treats tiers as *parallel capacity* (round-robin under load) rather than strictly serial fallback.
 
+**Paper→repo correlation is layered by cost:** author-declared links in the abstract (deterministic regex) → the Hugging Face Papers API → GitHub citation search (repos citing the paper's arXiv ID, guarded against paper-collection repos and mega-frameworks that cite hundreds of IDs). Every link carries its provenance (`github_source`), star counts are always fetched live, and a paper without public code stays `null` — coverage is bounded by reality, never padded by guesswork.
+
 **Unattended operation** = idempotency + checkpoints + the failure-mode matrix (§2.3). There is no failure class whose response is "page a human": every class maps to retry, backoff-and-retry, escalate-fetch-tier, or skip-and-log.
 
 ## 2. Handling 413s & 429s across thousands of concurrent extractions
