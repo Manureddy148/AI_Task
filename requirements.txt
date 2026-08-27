@@ -1,0 +1,25 @@
+# Core async crawling
+aiohttp>=3.9
+aiolimiter>=1.1
+
+# Parsing
+beautifulsoup4>=4.12
+lxml>=5.2
+feedparser>=6.0
+python-dateutil>=2.9
+
+# Config
+python-dotenv>=1.0
+
+# Entity resolution
+rapidfuzz>=3.6
+
+# Anti-bot escalation (optional — only for JS-rendered / protected sources)
+playwright>=1.44
+
+# Google Sheets export (optional)
+gspread>=6.0
+google-auth>=2.29
+
+# Testing
+pytest>=8.0

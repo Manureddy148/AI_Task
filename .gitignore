@@ -1,0 +1,15 @@
+# Environments & secrets — never committed
+.venv/
+venv/
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
